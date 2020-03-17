@@ -29,7 +29,7 @@ class neuron:
             self.weights = []
             self.delta_weights = [0 for _ in range(future_neurons)]
             self.delta_bias = 0
-        elif(neuron_type != "input" and neuron_type != "output"):
+        else:
             print("ERROR: Unknown neuron type.")
             quit()
     
