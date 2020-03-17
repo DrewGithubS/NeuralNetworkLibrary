@@ -80,7 +80,6 @@ class layers:
         '''
         ## Step 1: Find error in the weights from hidden layer to output layer. ∂Error/∂Weight
         layer_expected_values = expected_values
-
         for layer_count in range(len(self.layers)-1):
             errors = []
             for expected, neuron in zip(expected_values, self.layers[len(self.layers)-1-layer_count].neurons):
@@ -89,8 +88,10 @@ class layers:
             layer_expected_values = []
             for error_count, error in enumerate(errors):
                 for neuron_count, neuron in enumerate(self.layers[len(self.layers)-2-layer_count].neurons):
+                    layer_expected_values.append(neuron.value + error/6 * neuron.weights[error_count])
+                    self.layers[len(self.layers)-2-layer_count].neurons[neuron_count].bias += error/6 * 1/(1+activate_inverse(neuron.value))
                     self.layers[len(self.layers)-2-layer_count].neurons[neuron_count].weights[error_count] += error/3 * neuron.value
-                    layer_expected_values.append(neuron.value + error/3 * neuron.weights[error_count])
+                    
 
     def print_network(self):
         for (layer_count, layer) in enumerate(self.layers):
