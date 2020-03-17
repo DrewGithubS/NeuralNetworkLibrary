@@ -13,18 +13,33 @@ class neuron:
     def __init__(self, neuron_type, future_neurons):
         # Makes a neuron of the specified type.
         self.value = 0
+        self.type = neuron_type
         if(neuron_type == "hidden"):
             self.bias = generate_random_weight_bias()
             self.weights = [generate_random_weight_bias() for _ in range(future_neurons)]
+            self.delta_weights = [0 for _ in range(future_neurons)]
+            self.delta_bias = 0
         elif(neuron_type =="input"):
             self.bias = 0
             self.weights = [generate_random_weight_bias() for _ in range(future_neurons)]
+            self.delta_weights = [0 for _ in range(future_neurons)]
+            self.delta_bias = 0
         elif(neuron_type == "output"):
             self.bias = 0
             self.weights = []
+            self.delta_weights = [0 for _ in range(future_neurons)]
+            self.delta_bias = 0
         elif(neuron_type != "input" and neuron_type != "output"):
             print("ERROR: Unknown neuron type.")
             quit()
+    
+    def apply_changes(self):
+        for weight_count in range(len(self.weights)):
+            self.weights[weight_count] += self.delta_weights[weight_count]
+            self.delta_weights[weight_count] = 0
+        if(self.type == "hidden"):
+            self.bias += self.delta_bias
+            self.delta_bias = 0
 
 class layer:
     def __init__(self, neuron_type, neuron_count, future_neurons):
@@ -65,20 +80,6 @@ class layers:
         return output
 
     def backpropgate(self, expected_values):
-        ## Value = sum(weights*values) + bias
-        ## Output = activate(Value)
-        ## Error = Σ((Expected - Output)^2)/n
-        
-        ## Derivative of a weightj in terms of Value = valuej
-        ## Derivative of a Value in terms of Output = activate'(Value)
-        ## Derivative of an Output in terms of Mean Error where n is the amount of outputs = 1/n * (Expected - Output)^2
-        '''
-        -1  0.5     -0.5
-        1   0.5     0.5
-        -1  0.5     -0.5
-        1   0.5     0.5     0 0.1 0.025
-        '''
-        ## Step 1: Find error in the weights from hidden layer to output layer. ∂Error/∂Weight
         layer_expected_values = expected_values
         for layer_count in range(len(self.layers)-1):
             errors = []
@@ -89,8 +90,11 @@ class layers:
             for error_count, error in enumerate(errors):
                 for neuron_count, neuron in enumerate(self.layers[len(self.layers)-2-layer_count].neurons):
                     layer_expected_values.append(neuron.value + error/6 * neuron.weights[error_count])
-                    self.layers[len(self.layers)-2-layer_count].neurons[neuron_count].bias += error/6 * 1/(1+activate_inverse(neuron.value))
-                    self.layers[len(self.layers)-2-layer_count].neurons[neuron_count].weights[error_count] += error/3 * neuron.value
+                    self.layers[len(self.layers)-2-layer_count].neurons[neuron_count].delta_bias += error/6 * 1/(1+activate_inverse(neuron.value))
+                    self.layers[len(self.layers)-2-layer_count].neurons[neuron_count].delta_weights[error_count] += error/3 * neuron.value
+        for layer in self.layers:
+            for neuron in layer.neurons:
+                neuron.apply_changes()
                     
 
     def print_network(self):
