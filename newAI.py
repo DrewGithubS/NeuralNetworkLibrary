@@ -1,5 +1,5 @@
 import neuralNetwork
-ai = neuralNetwork.nueral_network(2,[2,2],2) # Initializes a new neural network with 4 inputs, 3 hidden layers of 7, 5 and 5 neurons and 2 outputs
+ai = neuralNetwork.nueral_network(2,[2,2],2) # Initializes a new neural network with 2 inputs, 2 hidden layers of 2 and 2 neurons and 2 outputs
 output = []
 for _ in range(1000): 
     ai.set_values([5,5]) # Uses random weights and biases to get a result, The True parameter prints the network.
