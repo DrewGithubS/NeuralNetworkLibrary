@@ -1,136 +1,140 @@
-import random
-import math
+from random import random
+import os
 
-def activate(value):
-    return 2*math.atan(value)/math.pi
-def activate_inverse(value):
-    return math.pi * math.tan(value)/2
+def write(path, name, data):
+    with open(path + name, "w") as f:
+        f.write(str(data))
 
-def generate_random_weight_bias():
-    return ((random.random()*2)-1)
+def read(path, name):
+    with open(path + name, "r") as f:
+        return f.read()
 
-class neuron:
-    def __init__(self, neuron_type, future_neurons):
-        # Makes a neuron of the specified type.
+def load(path, activate, inverse_activate):
+    current_path = f"{path}\\Network\\"
+    neuron_count = []
+    for i in range(int(read(current_path, "layers.txt"))):
+        neuron_count.append(int(read(current_path, f"Layer{i}\\neurons.txt")))
+    learning_rate = float(read(current_path, "learningRate.txt"))
+    output = Network(neuron_count[0], neuron_count[1:-1], neuron_count[-1], learning_rate, activate, inverse_activate)
+    for layer_count, layer in enumerate(output.layers):
+        for neuron_count, neuron in enumerate(layer.neurons):
+            current_path = f"{path}\\Network\\Layer{layer_count}\\Neuron{neuron_count}\\"
+            output.layers[layer_count].neurons[neuron_count].bias = float(read(current_path, "bias.txt"))
+            for weight_count, _ in enumerate(neuron.weights):
+                current_path = f"{path}\\Network\\Layer{layer_count}\\Neuron{neuron_count}\\Weights\\"
+                output.layers[layer_count].neurons[neuron_count].weights[weight_count].value = float(read(current_path, f"weight{weight_count}.txt"))
+    return output
+    
+class Weight:
+    def __init__(self):
+        self.value = random()
+        self.derivative = 0
+
+class Neuron:
+    def __init__(self, weights):
         self.value = 0
-        self.type = neuron_type
-        if(neuron_type == "hidden"):
-            self.bias = generate_random_weight_bias()
-            self.weights = [generate_random_weight_bias() for _ in range(future_neurons)]
-            self.delta_weights = [0 for _ in range(future_neurons)]
-            self.delta_bias = 0
-        elif(neuron_type =="input"):
-            self.bias = 0
-            self.weights = [generate_random_weight_bias() for _ in range(future_neurons)]
-            self.delta_weights = [0 for _ in range(future_neurons)]
-            self.delta_bias = 0
-        elif(neuron_type == "output"):
-            self.bias = 0
-            self.weights = []
-            self.delta_weights = [0 for _ in range(future_neurons)]
-            self.delta_bias = 0
-        else:
-            print("ERROR: Unknown neuron type.")
-            quit()
-    
-    def apply_changes(self):
-        for weight_count in range(len(self.weights)):
-            self.weights[weight_count] += self.delta_weights[weight_count]
-            self.delta_weights[weight_count] = 0
-        if(self.type == "hidden"):
-            self.bias += self.delta_bias
-            self.delta_bias = 0
+        self.weights = [Weight() for _ in range(weights)]
+        self.bias = random()
+        self.value_derivative = 0
+        self.bias_derivative = 0
 
-class layer:
-    def __init__(self, neuron_type, neuron_count, future_neurons):
-        # Makes an array of neurons, a layer.
-        self.neurons = [neuron(neuron_type, future_neurons) for _ in range(neuron_count)]
+class Layer:
+    def __init__(self, neurons, next_neurons):
+        self.amount = neurons
+        self.neurons = [Neuron(next_neurons) for _ in range(neurons)]
 
-class layers:
-    def __init__(self, amount_of_inputs, amount_of_hidden_layers, amount_of_outputs):
-        # Makes an array of neurons, a layer.
-        self.layers = []
-        self.layers.append(layer("input", amount_of_inputs, amount_of_hidden_layers[0])) # Layer of input neurons
-        amount_of_hidden_layers.append(amount_of_outputs)
-        amount_of_hidden_layers_with_output = amount_of_hidden_layers
-        if(len(amount_of_hidden_layers)>=1):
-            for (layers_index, hidden_neuron_amount) in enumerate(amount_of_hidden_layers_with_output[:-1]):
-                self.layers.append(layer("hidden",
-                                         hidden_neuron_amount,
-                                         amount_of_hidden_layers[layers_index+1])) # Makes all the hidden layers with the specified amount of neurons
-        self.layers.append(layer("output", amount_of_outputs, 0))
-    
-    def reset_values(self):
+class Network:
+    def __init__(self, inputs, hidden_layers, outputs, learning_rate, activation_function, inverse_activation_function):
+        layers_list = [inputs] + hidden_layers + [outputs] + [0]
+        self.layers = [Layer(layers_list[i], layers_list[i+1]) for i in range(len(layers_list)-1)]
+        self.learning_rate = learning_rate
+        self.activate = activation_function
+        self.inverse_activate = inverse_activation_function
+        self.cost = []
+    def set_inputs(self, inputs):
+        for input, neuron in zip(inputs, self.layers[0].neurons):
+            neuron.value = input
+    def feed_forward(self):
+        self.zero_values()
+        for layer_count, layer in enumerate(self.layers[:-1]):
+            for neuron in layer.neurons:
+                neuron.value = self.activate(neuron.value + neuron.bias)
+                for weight_count, weight in enumerate(neuron.weights):
+                    self.layers[layer_count+1].neurons[weight_count].value += neuron.value * weight.value
+        self.outputs = []
+        for neuron_count, neuron in enumerate(self.layers[-1].neurons):
+            self.layers[-1].neurons[neuron_count].value = self.activate(neuron.value)
+            self.outputs.append(self.layers[-1].neurons[neuron_count].value)
+    def zero_values(self):
         for layer in self.layers:
             for neuron in layer.neurons:
                 neuron.value = 0
-    def feed_forward(self):
-        output = []
-        for (layer_count, layer) in enumerate(self.layers[:-1]):
-            for neuron in layer.neurons:
-                count = 0
-                for next_neuron in self.layers[layer_count+1].neurons:
-                    next_neuron.value += neuron.value * neuron.weights[count]
-                    count += 1
-            for next_neuron in self.layers[layer_count+1].neurons:
-                next_neuron.value += next_neuron.bias
-                next_neuron.value = activate(next_neuron.value)
-        for neuron in self.layers[len(self.layers)-1].neurons:
-            output.append(neuron.value)
-        return output
-
-    def backpropgate(self, expected_values):
-        layer_expected_values = expected_values
-        for layer_count in range(len(self.layers)-1):
-            errors = []
-            for expected, neuron in zip(expected_values, self.layers[len(self.layers)-1-layer_count].neurons):
-                errors.append(activate_inverse(expected-neuron.value)/len(self.layers[len(self.layers)-2].neurons))
-            layer_expected_values = []
-            layer_expected_values = []
-            for error_count, error in enumerate(errors):
-                for neuron_count, neuron in enumerate(self.layers[len(self.layers)-2-layer_count].neurons):
-                    layer_expected_values.append(neuron.value + error/6 * neuron.weights[error_count])
-                    self.layers[len(self.layers)-2-layer_count].neurons[neuron_count].delta_bias += error/6 * 1/(1+activate_inverse(neuron.value))
-                    self.layers[len(self.layers)-2-layer_count].neurons[neuron_count].delta_weights[error_count] += error/3 * neuron.value
+    def backpropogate(self, expecteds, print_bool):
+        errors = [output - expected for output, expected in zip(self.outputs, expecteds)]
+        self.calculate_cost(errors)
+        derivative_error = [2*error/len(self.outputs) for error in errors]
+        derivative_outputs = derivative_error # Technically redundant, but shows the chain rule
+        for neuron, derivative_output in zip(self.layers[-1].neurons, derivative_outputs):
+            neuron.value_derivative = -self.inverse_activate(derivative_output)
+            neuron.bias_derivative = -self.inverse_activate(derivative_output)
+        for layer_count_unreversed, layer in enumerate(reversed(self.layers[:-1])):
+            layer_count = len(self.layers[:-1]) - layer_count_unreversed - 1
+            for neuron_count, neuron in enumerate(layer.neurons):
+                for weight_count, (weight, next_neuron) in enumerate(zip(neuron.weights, self.layers[layer_count + 1].neurons)):
+                    self.layers[layer_count].neurons[neuron_count].weights[weight_count].derivative = neuron.value * next_neuron.value_derivative
+                    self.layers[layer_count].neurons[neuron_count].value_derivative += weight.value * next_neuron.value_derivative
+                neuron.value_derivative = self.inverse_activate(neuron.value_derivative)
+                neuron.bias_derivative = neuron.value_derivative # Redundant but increases specificity
+        if(print_bool):
+            self.print()
+        self.apply_gradient_descent()
+    def calculate_cost(self, errors):
+        output = 0
+        for error in errors:
+            output += error**2
+        self.cost.append(output)
+    def apply_gradient_descent(self):
         for layer in self.layers:
             for neuron in layer.neurons:
-                neuron.apply_changes()
-                    
-
-    def print_network(self):
-        for (layer_count, layer) in enumerate(self.layers):
-            print("Layer Number {}:".format(layer_count + 1))
-            for (neuron_count, neuron) in enumerate(layer.neurons):
-                print("\tNeuron {}:".format(neuron_count + 1))
-                print("\t\tValue: {}".format(neuron.value))
-                print("\t\tBias: {}".format(neuron.bias))
-                print("\t\tWeights:")
+                neuron.bias += neuron.bias_derivative * self.learning_rate
+                neuron.value_derivative = 0
                 for weight in neuron.weights:
-                    print("\t\t\t{}".format(weight))
-            print("\n")
-            for (output_nueron_count, neuron) in enumerate(self.layers[len(self.layers)-1].neurons):
-                print("Output {}: {}".format(output_nueron_count, neuron.value))
-        print("\n\n\n\n")
-
-
-class nueral_network:
-    def __init__(self, amount_of_inputs, amount_of_hidden_layers, amount_of_outputs):
-        # Makers an array of layers.
-        self.layers = layers(amount_of_inputs, amount_of_hidden_layers, amount_of_outputs)
-    
-    def set_values(self, values):
-        # Sets the values of the input neurons
-        for (count, value) in enumerate(values):
-            self.layers.layers[0].neurons[count].value = value
-
-    def feed_forward(self):
-        return self.layers.feed_forward()
-    
-    def print_network(self):
-        self.layers.print_network()
-    
-    def backpropgate(self, expected_outputs):
-        self.layers.backpropgate(expected_outputs)
-    
-    def reset_values(self):
-        self.layers.reset_values()
+                    weight.value += weight.derivative * self.learning_rate
+                    weight.derivative = 0
+    def print(self):
+        print("Network:")
+        for layer_count, layer in enumerate(self.layers):
+            print(f"\tLayer {layer_count+1}:")
+            for neuron_count, neuron in enumerate(layer.neurons):
+                print(f"\t\tNeuron {neuron_count+1}:")
+                print(f"\t\t\tValue: {neuron.value}")
+                print(f"\t\t\tValue Derivative: {neuron.value_derivative}")
+                print(f"\t\t\tBias: {neuron.bias}")
+                print(f"\t\t\tBias Derivative: {neuron.bias_derivative}")
+                print(f"\t\t\tWeights:")
+                for weight_count, weight in enumerate(neuron.weights):
+                    print(f"\t\t\t\tWeight {weight_count+1}:")
+                    print(f"\t\t\t\t\tValue: {weight.value}")
+                    print(f"\t\t\t\t\tWeight Derivative: {weight.derivative}")
+        print(f"Output: {self.outputs}")
+        print(f"Cost: {self.cost[-1]}")
+    def save(self, path):
+        current_path = f"{path}\\Network\\"
+        os.mkdir(current_path)
+        write(current_path, "layers.txt", len(self.layers))
+        write(current_path, "learningRate.txt", self.learning_rate)
+        for i in range(len(self.layers)):
+            write(current_path, f"neuronCount{i}.txt", len(self.layers[i].neurons))
+        for layer_count, layer in enumerate(self.layers):
+            current_path = f"{path}\\Network\\Layer{layer_count}\\"
+            os.mkdir(current_path)
+            write(current_path, "neurons.txt", len(layer.neurons))
+            for neuron_count, neuron in enumerate(layer.neurons):
+                current_path = f"{path}\\Network\\Layer{layer_count}\\Neuron{neuron_count}\\"
+                os.mkdir(current_path)
+                write(current_path, "bias.txt", neuron.bias)
+                write(current_path, "weights.txt", len(neuron.weights))
+                current_path = f"{path}\\Network\\Layer{layer_count}\\Neuron{neuron_count}\\Weights\\"
+                os.mkdir(current_path)
+                for weight_count, weight in enumerate(neuron.weights):
+                    write(current_path, f"weight{weight_count}.txt", weight.value)
