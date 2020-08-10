@@ -1,140 +1,140 @@
 from random import random
+from numba import jit
 import os
 
 def write(path, name, data):
     with open(path + name, "w") as f:
         f.write(str(data))
-
 def read(path, name):
     with open(path + name, "r") as f:
         return f.read()
 
-def load(path, activate, inverse_activate):
-    current_path = f"{path}\\Network\\"
-    neuron_count = []
-    for i in range(int(read(current_path, "layers.txt"))):
-        neuron_count.append(int(read(current_path, f"Layer{i}\\neurons.txt")))
-    learning_rate = float(read(current_path, "learningRate.txt"))
-    output = Network(neuron_count[0], neuron_count[1:-1], neuron_count[-1], learning_rate, activate, inverse_activate)
-    for layer_count, layer in enumerate(output.layers):
-        for neuron_count, neuron in enumerate(layer.neurons):
-            current_path = f"{path}\\Network\\Layer{layer_count}\\Neuron{neuron_count}\\"
-            output.layers[layer_count].neurons[neuron_count].bias = float(read(current_path, "bias.txt"))
-            for weight_count, _ in enumerate(neuron.weights):
-                current_path = f"{path}\\Network\\Layer{layer_count}\\Neuron{neuron_count}\\Weights\\"
-                output.layers[layer_count].neurons[neuron_count].weights[weight_count].value = float(read(current_path, f"weight{weight_count}.txt"))
+def parse_array(string, type_of):
+    output = []
+    for value in (string[1][-1]).split(", "):
+        output.append(type_of(value))
     return output
-    
-class Weight:
-    def __init__(self):
-        self.value = random()
-        self.derivative = 0
-
-class Neuron:
-    def __init__(self, weights):
-        self.value = 0
-        self.weights = [Weight() for _ in range(weights)]
-        self.bias = random()
-        self.value_derivative = 0
-        self.bias_derivative = 0
-
-class Layer:
-    def __init__(self, neurons, next_neurons):
-        self.amount = neurons
-        self.neurons = [Neuron(next_neurons) for _ in range(neurons)]
-
+def load(path, activation, inverse_activation):
+    current_path = f"{path}\\Network\\"
+    layers = parse_array(read(current_path, "layers.txt"), int)
+    learning_rate = float(read(current_path, "learningRate.txt"))
+    output = Network(layers, learning_rate, activation, inverse_activation)
+    for layer in range(len(layers)):
+        output.biases[layer] = parse_array(read(current_path, f"bias{layer}.txt"), float)
+    for layer_count, layer in layers[1:]:
+        for neuron in range(layer):
+            output.weights[layer_count][neuron] = parse_array(read(current_path, f"weight{layer}_{neuron}.txt"), float)
+    return output
 class Network:
-    def __init__(self, inputs, hidden_layers, outputs, learning_rate, activation_function, inverse_activation_function):
-        layers_list = [inputs] + hidden_layers + [outputs] + [0]
-        self.layers = [Layer(layers_list[i], layers_list[i+1]) for i in range(len(layers_list)-1)]
+    def __init__(self, layers, learning_rate, activation, inverse_activation):
+        self.weights = [[[(random()-0.5)*2 for next_neuron in range(next_neurons)] for neuron in range(neurons)] for next_neurons, neurons in zip((layers[1:] + [0]), layers)]
+        self.values = [[0 for neuron in range(layer)] for layer in layers]
+        self.biases = [[0 for neuron in range(layer)] for layer in layers]
+        self.weight_derivatives = [[[0 for next_neuron in range(next_neurons)] for neuron in range(neurons)] for next_neurons, neurons in zip((layers[1:] + [0]), layers)]
+        self.value_derivatives = [[0 for neuron in range(layer)] for layer in layers]
+        self.bias_derivatives = [[0 for neuron in range(layer)] for layer in layers]
         self.learning_rate = learning_rate
-        self.activate = activation_function
-        self.inverse_activate = inverse_activation_function
+        self.activate = activation
+        self.inverse_activate = inverse_activation
         self.cost = []
-    def set_inputs(self, inputs):
-        for input, neuron in zip(inputs, self.layers[0].neurons):
-            neuron.value = input
-    def feed_forward(self):
-        self.zero_values()
-        for layer_count, layer in enumerate(self.layers[:-1]):
-            for neuron in layer.neurons:
-                neuron.value = self.activate(neuron.value + neuron.bias)
-                for weight_count, weight in enumerate(neuron.weights):
-                    self.layers[layer_count+1].neurons[weight_count].value += neuron.value * weight.value
-        self.outputs = []
-        for neuron_count, neuron in enumerate(self.layers[-1].neurons):
-            self.layers[-1].neurons[neuron_count].value = self.activate(neuron.value)
-            self.outputs.append(self.layers[-1].neurons[neuron_count].value)
-    def zero_values(self):
-        for layer in self.layers:
-            for neuron in layer.neurons:
-                neuron.value = 0
-    def backpropogate(self, expecteds, print_bool):
-        errors = [output - expected for output, expected in zip(self.outputs, expecteds)]
-        self.calculate_cost(errors)
-        derivative_error = [2*error/len(self.outputs) for error in errors]
+        self.errors = []
+        self.layers = layers
+    def set_values(self, values):
+        for layer in range(len(self.values)):
+            for neuron in range(len(self.values[layer])):
+                self.values[layer][neuron] = 0
+        for count, value in enumerate(values):
+            self.values[0][count] = value
+    @jit(forceobj=True)
+    def learn(self, inputs, outputs):
+        for values, expecteds in zip(inputs, outputs):
+            for neuron in range(len(self.values[0])):
+                self.values[0][neuron] = values[neuron]
+            for layer in range(len(self.values)-1):
+                for neuron in range(len(self.values[layer])):
+                    for weight in range(len(self.weights[layer][neuron])):
+                        self.values[layer+1][weight] += self.values[layer][neuron] * self.weights[layer][neuron][weight]
+                for neuron in range(len(self.values[layer+1])):
+                    self.values[layer+1][neuron] = self.activate(self.values[layer+1][neuron] + self.biases[layer+1][neuron])
+            self.errors = [output - expected for output, expected in zip(self.values[-1], expecteds)]
+            derivative_error = [-2*error/len(self.values[-1]) for error in self.errors]
+            derivative_outputs = derivative_error # Technically redundant, but shows the chain rule
+            self.value_derivatives[-1] = derivative_outputs
+            self.bias_derivatives[-1] = derivative_outputs
+            for layer in reversed(range(len(self.value_derivatives)-1)):
+                layer += 1
+                for neuron_count, neuron in enumerate(self.values[layer-1]):
+                    for weight_count, weight in enumerate(self.weight_derivatives[layer-1][neuron_count]):
+                        self.value_derivatives[layer-1][neuron_count] += self.value_derivatives[layer][weight_count] * weight
+                        self.weight_derivatives[layer-1][neuron_count][weight_count] = neuron * self.value_derivatives[layer][weight_count]
+                    self.value_derivatives[layer-1][neuron_count] = -self.inverse_activate(self.value_derivatives[layer-1][neuron_count])
+                    self.bias_derivatives[layer-1][neuron_count] = self.value_derivatives[layer-1][neuron_count]
+            for layer in range(len(self.biases)):
+                for neuron in range(len(self.biases[layer])):
+                    self.biases[layer][neuron] += self.bias_derivatives[layer][neuron] * self.learning_rate
+            for layer in range(len(self.weight_derivatives)):
+                for neuron in range(len(self.weight_derivatives[layer])):
+                    for weight in range(len(self.weight_derivatives[layer][neuron])):
+                        self.weights[layer][neuron][weight] += self.weight_derivatives[layer][neuron][weight]
+    def feed_forward(self, values):
+        for neuron in range(len(self.values[0])):
+            self.values[0][neuron] = values[neuron]
+        for layer in range(len(self.values)-1):
+            for neuron in range(len(self.values[layer])):
+                for weight in range(len(self.weights[layer][neuron])):
+                    self.values[layer+1][weight] += self.values[layer][neuron] * self.weights[layer][neuron][weight]
+            for neuron in range(len(self.values[layer+1])):
+                self.values[layer+1][neuron] = self.activate(self.values[layer+1][neuron] + self.biases[layer+1][neuron])
+    def get_outputs(self):
+        return self.values[-1]
+    def backpropogate(self, expecteds):
+        self.errors = [output - expected for output, expected in zip(self.values[-1], expecteds)]
+        derivative_error = [-2*error/len(self.values[-1]) for error in self.errors]
         derivative_outputs = derivative_error # Technically redundant, but shows the chain rule
-        for neuron, derivative_output in zip(self.layers[-1].neurons, derivative_outputs):
-            neuron.value_derivative = -self.inverse_activate(derivative_output)
-            neuron.bias_derivative = -self.inverse_activate(derivative_output)
-        for layer_count_unreversed, layer in enumerate(reversed(self.layers[:-1])):
-            layer_count = len(self.layers[:-1]) - layer_count_unreversed - 1
-            for neuron_count, neuron in enumerate(layer.neurons):
-                for weight_count, (weight, next_neuron) in enumerate(zip(neuron.weights, self.layers[layer_count + 1].neurons)):
-                    self.layers[layer_count].neurons[neuron_count].weights[weight_count].derivative = neuron.value * next_neuron.value_derivative
-                    self.layers[layer_count].neurons[neuron_count].value_derivative += weight.value * next_neuron.value_derivative
-                neuron.value_derivative = self.inverse_activate(neuron.value_derivative)
-                neuron.bias_derivative = neuron.value_derivative # Redundant but increases specificity
-        if(print_bool):
-            self.print()
-        self.apply_gradient_descent()
-    def calculate_cost(self, errors):
+        self.value_derivatives[-1] = derivative_outputs
+        self.bias_derivatives[-1] = derivative_outputs
+        for layer in reversed(range(len(self.value_derivatives)-1)):
+            layer += 1
+            for neuron_count, neuron in enumerate(self.values[layer-1]):
+                for weight_count, weight in enumerate(self.weight_derivatives[layer-1][neuron_count]):
+                    self.value_derivatives[layer-1][neuron_count] += self.value_derivatives[layer][weight_count] * weight
+                    self.weight_derivatives[layer-1][neuron_count][weight_count] = neuron * self.value_derivatives[layer][weight_count]
+                self.value_derivatives[layer-1][neuron_count] = -self.inverse_activate(self.value_derivatives[layer-1][neuron_count])
+                self.bias_derivatives[layer-1][neuron_count] = self.value_derivatives[layer-1][neuron_count]
+        for layer in range(len(self.biases)):
+            for neuron in range(len(self.biases[layer])):
+                self.biases[layer][neuron] += self.bias_derivatives[layer][neuron] * self.learning_rate
+        for layer in range(len(self.weight_derivatives)):
+            for neuron in range(len(self.weight_derivatives[layer])):
+                for weight in range(len(self.weight_derivatives[layer][neuron])):
+                    self.weights[layer][neuron][weight] += self.weight_derivatives[layer][neuron][weight]
+    def get_cost(self):
         output = 0
-        for error in errors:
+        for error in self.errors:
             output += error**2
         self.cost.append(output)
-    def apply_gradient_descent(self):
-        for layer in self.layers:
-            for neuron in layer.neurons:
-                neuron.bias += neuron.bias_derivative * self.learning_rate
-                neuron.value_derivative = 0
-                for weight in neuron.weights:
-                    weight.value += weight.derivative * self.learning_rate
-                    weight.derivative = 0
+        return output
     def print(self):
-        print("Network:")
-        for layer_count, layer in enumerate(self.layers):
-            print(f"\tLayer {layer_count+1}:")
-            for neuron_count, neuron in enumerate(layer.neurons):
-                print(f"\t\tNeuron {neuron_count+1}:")
-                print(f"\t\t\tValue: {neuron.value}")
-                print(f"\t\t\tValue Derivative: {neuron.value_derivative}")
-                print(f"\t\t\tBias: {neuron.bias}")
-                print(f"\t\t\tBias Derivative: {neuron.bias_derivative}")
-                print(f"\t\t\tWeights:")
-                for weight_count, weight in enumerate(neuron.weights):
-                    print(f"\t\t\t\tWeight {weight_count+1}:")
-                    print(f"\t\t\t\t\tValue: {weight.value}")
-                    print(f"\t\t\t\t\tWeight Derivative: {weight.derivative}")
-        print(f"Output: {self.outputs}")
-        print(f"Cost: {self.cost[-1]}")
+        for layer_count, layer in enumerate(self.values):
+            print(f"Layer {layer_count}:")
+            for neuron_count, neuron in enumerate(layer):
+                print(f"\tNeuron {neuron_count}:")
+                print(f"\t\tValue: {neuron}")
+                print(f"\t\tValue Derivative: {self.value_derivatives[layer_count][neuron_count]}")
+                print(f"\t\tBias: {self.biases[layer_count][neuron_count]}")
+                print(f"\t\tBias Derivative: {self.bias_derivatives[layer_count][neuron_count]}")
+                print("\t\tWeights:")
+                for weight_count, weight in enumerate(self.weights[layer_count][neuron_count]):
+                    print(f"\t\t\tWeight {weight_count}: {weight}")
+                    print(f"\t\t\tWeight Derivative {weight_count}: {self.weight_derivatives[layer_count][neuron_count][weight_count]}")
     def save(self, path):
         current_path = f"{path}\\Network\\"
-        os.mkdir(current_path)
-        write(current_path, "layers.txt", len(self.layers))
-        write(current_path, "learningRate.txt", self.learning_rate)
-        for i in range(len(self.layers)):
-            write(current_path, f"neuronCount{i}.txt", len(self.layers[i].neurons))
-        for layer_count, layer in enumerate(self.layers):
-            current_path = f"{path}\\Network\\Layer{layer_count}\\"
+        if(os.path.isdir(current_path) == False):
             os.mkdir(current_path)
-            write(current_path, "neurons.txt", len(layer.neurons))
-            for neuron_count, neuron in enumerate(layer.neurons):
-                current_path = f"{path}\\Network\\Layer{layer_count}\\Neuron{neuron_count}\\"
-                os.mkdir(current_path)
-                write(current_path, "bias.txt", neuron.bias)
-                write(current_path, "weights.txt", len(neuron.weights))
-                current_path = f"{path}\\Network\\Layer{layer_count}\\Neuron{neuron_count}\\Weights\\"
-                os.mkdir(current_path)
-                for weight_count, weight in enumerate(neuron.weights):
-                    write(current_path, f"weight{weight_count}.txt", weight.value)
+        write(current_path, "layers.txt", self.layers)
+        write(current_path, "learningRate.txt", self.learning_rate)
+        for layer_count, layer in enumerate(self.biases):
+            write(current_path, f"bias{layer_count}.txt", layer)
+        for layer_count, layer in enumerate(self.weights):
+            for neuron_count, neuron in enumerate(layer):
+                write(current_path, f"weight{layer_count}_{neuron_count}.txt", neuron)
