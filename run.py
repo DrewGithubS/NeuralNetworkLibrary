@@ -5,7 +5,7 @@ import csv, math
 
 print("Reading data...")
 data = []
-with open('C:\\Users\\15203\\Desktop\\FinalNetwork\\train.csv') as csvfile:
+with open('C:\\Users\\User\\Desktop\\FinalNetwork\\train.csv') as csvfile:
     readCSV = csv.reader(csvfile, delimiter=',')
     float_row = []
     for count, row in enumerate(readCSV):
@@ -39,9 +39,9 @@ correct = []
 for count, piece in enumerate(data):
     if(count%1000 == 0):
         print(f"{count} images trained...")
-        with open('C:\\Users\\15203\\Desktop\\FinalNetwork\\cost.txt', 'w') as f:
+        with open('C:\\Users\\User\\Desktop\\FinalNetwork\\cost.txt', 'w') as f:
             f.write(str(network.cost))
-        with open('C:\\Users\\15203\\Desktop\\FinalNetwork\\correct.txt', 'w') as f:
+        with open('C:\\Users\\User\\Desktop\\FinalNetwork\\correct.txt', 'w') as f:
             f.write(str(correct))
     network.set_inputs(piece[1:])
     expected_output = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -54,9 +54,9 @@ network.feed_forward()
 expected_output = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 expected_output[data[0][0]] = 1
 network.backpropogate(expected_output, True)
-network.save("C:\\Users\\15203\\Desktop\\FinalNetwork")
+network.save("C:\\Users\\User\\Desktop\\FinalNetwork")
 
-with open('C:\\Users\\15203\\Desktop\\FinalNetwork\\cost.txt', 'w') as f:
+with open('C:\\Users\\User\\Desktop\\FinalNetwork\\cost.txt', 'w') as f:
     f.write(str(network.cost))
-with open('C:\\Users\\15203\\Desktop\\FinalNetwork\\correct.txt', 'w') as f:
+with open('C:\\Users\\User\\Desktop\\FinalNetwork\\correct.txt', 'w') as f:
     f.write(str(correct))
