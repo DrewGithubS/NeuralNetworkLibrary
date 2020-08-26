@@ -11,7 +11,7 @@ def read(path, name):
 
 def parse_array(string, type_of):
     output = []
-    for value in (string[1][-1]).split(", "):
+    for value in (string[1:][:-1]).split(", "):
         output.append(type_of(value))
     return output
 def load(path, activation, inverse_activation):
@@ -20,10 +20,16 @@ def load(path, activation, inverse_activation):
     learning_rate = float(read(current_path, "learningRate.txt"))
     output = Network(layers, learning_rate, activation, inverse_activation)
     for layer in range(len(layers)):
-        output.biases[layer] = parse_array(read(current_path, f"bias{layer}.txt"), float)
-    for layer_count, layer in layers[1:]:
+        try:
+            output.biases[layer] = parse_array(read(current_path, f"bias{layer}.txt"), float)
+        except:
+            print(f"Failed reading biases, layer: {layer}.")
+    for layer_count, layer in enumerate(layers[1:]):
         for neuron in range(layer):
-            output.weights[layer_count][neuron] = parse_array(read(current_path, f"weight{layer}_{neuron}.txt"), float)
+            try:
+                output.weights[layer_count][neuron] = parse_array(read(current_path, f"weight{layer_count}_{neuron}.txt"), float)
+            except:
+                print(f"Failed reading weights, layer: {layer}, neuron: {neuron}.")
     return output
 class Network:
     def __init__(self, layers, learning_rate, activation, inverse_activation):
@@ -57,25 +63,26 @@ class Network:
                 for neuron in range(len(self.values[layer+1])):
                     self.values[layer+1][neuron] = self.activate(self.values[layer+1][neuron] + self.biases[layer+1][neuron])
             self.errors = [output - expected for output, expected in zip(self.values[-1], expecteds)]
-            derivative_error = [-2*error/len(self.values[-1]) for error in self.errors]
-            derivative_outputs = derivative_error # Technically redundant, but shows the chain rule
-            self.value_derivatives[-1] = derivative_outputs
-            self.bias_derivatives[-1] = derivative_outputs
-            for layer in reversed(range(len(self.value_derivatives)-1)):
-                layer += 1
-                for neuron_count, neuron in enumerate(self.values[layer-1]):
-                    for weight_count, weight in enumerate(self.weight_derivatives[layer-1][neuron_count]):
-                        self.value_derivatives[layer-1][neuron_count] += self.value_derivatives[layer][weight_count] * weight
-                        self.weight_derivatives[layer-1][neuron_count][weight_count] = neuron * self.value_derivatives[layer][weight_count]
-                    self.value_derivatives[layer-1][neuron_count] = -self.inverse_activate(self.value_derivatives[layer-1][neuron_count])
-                    self.bias_derivatives[layer-1][neuron_count] = self.value_derivatives[layer-1][neuron_count]
-            for layer in range(len(self.biases)):
-                for neuron in range(len(self.biases[layer])):
-                    self.biases[layer][neuron] += self.bias_derivatives[layer][neuron] * self.learning_rate
-            for layer in range(len(self.weight_derivatives)):
-                for neuron in range(len(self.weight_derivatives[layer])):
-                    for weight in range(len(self.weight_derivatives[layer][neuron])):
-                        self.weights[layer][neuron][weight] += self.weight_derivatives[layer][neuron][weight]
+        derivative_error = [-2*error/len(self.values[-1]) for error in self.errors]
+        derivative_outputs = derivative_error # Technically redundant, but shows the chain rule
+        self.value_derivatives[-1] = derivative_outputs
+        self.bias_derivatives[-1] = derivative_outputs
+        for layer in reversed(range(len(self.value_derivatives)-1)):
+            layer += 1
+            for neuron_count, neuron in enumerate(self.values[layer-1]):
+                for weight_count, weight in enumerate(self.weight_derivatives[layer-1][neuron_count]):
+                    self.value_derivatives[layer-1][neuron_count] += self.value_derivatives[layer][weight_count] * weight
+                    self.weight_derivatives[layer-1][neuron_count][weight_count] = neuron * self.value_derivatives[layer][weight_count]
+                self.value_derivatives[layer-1][neuron_count] = self.inverse_activate(self.value_derivatives[layer-1][neuron_count])
+                self.bias_derivatives[layer-1][neuron_count] = self.value_derivatives[layer-1][neuron_count]
+        for layer in range(len(self.biases)):
+            for neuron in range(len(self.biases[layer])):
+                self.biases[layer][neuron] += self.bias_derivatives[layer][neuron] * self.learning_rate
+        for layer in range(len(self.weight_derivatives)):
+            for neuron in range(len(self.weight_derivatives[layer])):
+                for weight in range(len(self.weight_derivatives[layer][neuron])):
+                    self.weights[layer][neuron][weight] += self.weight_derivatives[layer][neuron][weight]
+        self.get_cost()
     def feed_forward(self, values):
         for neuron in range(len(self.values[0])):
             self.values[0][neuron] = values[neuron]
@@ -96,10 +103,10 @@ class Network:
         for layer in reversed(range(len(self.value_derivatives)-1)):
             layer += 1
             for neuron_count, neuron in enumerate(self.values[layer-1]):
-                for weight_count, weight in enumerate(self.weight_derivatives[layer-1][neuron_count]):
-                    self.value_derivatives[layer-1][neuron_count] += self.value_derivatives[layer][weight_count] * weight
+                for weight_count, weight in enumerate(self.weights[layer-1][neuron_count]):
+                    self.value_derivatives[layer-1][neuron_count] += weight * self.value_derivatives[layer][weight_count]
                     self.weight_derivatives[layer-1][neuron_count][weight_count] = neuron * self.value_derivatives[layer][weight_count]
-                self.value_derivatives[layer-1][neuron_count] = -self.inverse_activate(self.value_derivatives[layer-1][neuron_count])
+                self.value_derivatives[layer-1][neuron_count] = self.inverse_activate(self.value_derivatives[layer-1][neuron_count])
                 self.bias_derivatives[layer-1][neuron_count] = self.value_derivatives[layer-1][neuron_count]
         for layer in range(len(self.biases)):
             for neuron in range(len(self.biases[layer])):
@@ -108,6 +115,7 @@ class Network:
             for neuron in range(len(self.weight_derivatives[layer])):
                 for weight in range(len(self.weight_derivatives[layer][neuron])):
                     self.weights[layer][neuron][weight] += self.weight_derivatives[layer][neuron][weight]
+        self.get_cost()
     def get_cost(self):
         output = 0
         for error in self.errors:
